@@ -1,5 +1,6 @@
 import { test, expect } from '../../../playwright';
 import path from 'path';
+import fs from 'fs';
 import { Page } from '@playwright/test';
 import { importCollection, createEnvironment, closeAllCollections, addRowToActiveTab, saveEnvironment, deleteAllGlobalEnvironments } from '../../utils/page';
 import { buildCommonLocators } from '../../utils/page/locators';
@@ -7,6 +8,7 @@ import { buildCommonLocators } from '../../utils/page/locators';
 const variablesTab = (page: Page) => buildCommonLocators(page).environment.variablesTab();
 const secretsTab = (page: Page) => buildCommonLocators(page).environment.secretsTab();
 const varRow = (page: Page, name: string) => buildCommonLocators(page).environment.varRow(name);
+const varRowValueLine = (page: Page, name: string) => buildCommonLocators(page).environment.varRowValueLine(name);
 const saveTab = (page: Page) => buildCommonLocators(page).environment.saveTab();
 const searchInputLocator = (page: Page) => buildCommonLocators(page).environment.searchInput();
 const tabDraftIcon = (page: Page) => page.locator('.request-tab.active').getByTestId('tab-draft-icon');
@@ -99,6 +101,43 @@ test.describe('Environment Variables / Secrets tab separation', () => {
       await secretsTab(page).click();
       await expect(varRow(page, 'apiToken')).toBeVisible();
       await expect(varRow(page, 'host')).toHaveCount(0);
+    });
+  });
+
+  test('per-tab Save on the Secrets tab keeps unsaved Variables edits', async ({ page, createTmpDir }) => {
+    const collectionDir = await createTmpDir('var-unsaved-secret-save');
+    await importCollection(page, collectionFile, collectionDir, {
+      expectedCollectionName: 'test_collection'
+    });
+
+    await createEnvironment(page, 'Unsaved Var Env', 'collection');
+
+    await test.step('Add a variable on the Variables tab without saving', async () => {
+      await addRowToActiveTab(page, 'host', 'https://echo.usebruno.com');
+      await expect(varRow(page, 'host')).toBeVisible();
+    });
+
+    await test.step('Add a secret and save it with the per-tab Save button', async () => {
+      await secretsTab(page).click();
+      await addRowToActiveTab(page, 'apiToken', 'super-secret-token-12345');
+      await saveTab(page).click();
+      await expect(page.getByText('Changes saved successfully').last()).toBeVisible();
+    });
+
+    await test.step('The unsaved variable survived the Secrets save', async () => {
+      await variablesTab(page).click();
+      await expect(varRow(page, 'host')).toBeVisible();
+      await expect(varRowValueLine(page, 'host')).toHaveText('https://echo.usebruno.com');
+      // The variable is still unsaved, so the draft indicator must remain.
+      await expect(tabDraftIcon(page)).toBeVisible();
+    });
+
+    await test.step('Saving the Variables tab now persists the variable', async () => {
+      await saveTab(page).click();
+      await expect(page.getByText('Changes saved successfully').last()).toBeVisible();
+      await expect(varRowValueLine(page, 'host')).toHaveText('https://echo.usebruno.com');
+      // Everything is saved now, so the draft indicator must clear.
+      await expect(tabDraftIcon(page)).not.toBeVisible();
     });
   });
 
@@ -334,6 +373,42 @@ test.describe('Global Environment Variables / Secrets tab separation', () => {
       await secretsTab(page).click();
       await expect(varRow(page, 'apiToken')).toBeVisible();
       await expect(varRow(page, 'host')).toHaveCount(0);
+    });
+  });
+
+  test('per-tab Save on the Secrets tab keeps unsaved Variables edits', async ({ page, createTmpDir }) => {
+    await importCollection(page, collectionFile, await createTmpDir('global-var-unsaved-secret-save'), {
+      expectedCollectionName: 'test_collection'
+    });
+
+    await createEnvironment(page, 'Global Unsaved Var Env', 'global');
+
+    await test.step('Add a variable on the Variables tab without saving', async () => {
+      await addRowToActiveTab(page, 'host', 'https://echo.usebruno.com');
+      await expect(varRow(page, 'host')).toBeVisible();
+    });
+
+    await test.step('Add a secret and save it with the per-tab Save button', async () => {
+      await secretsTab(page).click();
+      await addRowToActiveTab(page, 'apiToken', 'super-secret-token-12345');
+      await saveTab(page).click();
+      await expect(page.getByText('Changes saved successfully').last()).toBeVisible();
+    });
+
+    await test.step('The unsaved variable survived the Secrets save', async () => {
+      await variablesTab(page).click();
+      await expect(varRow(page, 'host')).toBeVisible();
+      await expect(varRowValueLine(page, 'host')).toHaveText('https://echo.usebruno.com');
+      // The variable is still unsaved, so the draft indicator must remain.
+      await expect(tabDraftIcon(page)).toBeVisible();
+    });
+
+    await test.step('Saving the Variables tab now persists the variable', async () => {
+      await saveTab(page).click();
+      await expect(page.getByText('Changes saved successfully').last()).toBeVisible();
+      await expect(varRowValueLine(page, 'host')).toHaveText('https://echo.usebruno.com');
+      // Everything is saved now, so the draft indicator must clear.
+      await expect(tabDraftIcon(page)).not.toBeVisible();
     });
   });
 
