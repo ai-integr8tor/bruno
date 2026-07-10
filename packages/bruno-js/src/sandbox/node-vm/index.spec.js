@@ -240,6 +240,245 @@ describe('node-vm sandbox', () => {
       // Nested module should successfully access the additional root
       expect(context.bru.setVar).toHaveBeenCalledWith('result', true);
     });
+
+    it('should resolve npm module from additionalContextRoots node_modules', async () => {
+      const additionalRoot = path.join(testDir, 'shared');
+      fs.mkdirSync(additionalRoot);
+
+      // Create a fake npm module inside shared/node_modules
+      const sharedNodeModulesDir = path.join(additionalRoot, 'node_modules', 'shared-package');
+      fs.mkdirSync(sharedNodeModulesDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(sharedNodeModulesDir, 'index.js'),
+        'module.exports = { fromShared: true, version: "1.0.0" };'
+      );
+
+      const script = `
+        const pkg = require('shared-package');
+        bru.setVar('fromShared', pkg.fromShared);
+        bru.setVar('version', pkg.version);
+      `;
+
+      const context = {
+        bru: { setVar: jest.fn() },
+        console: console
+      };
+
+      const scriptingConfig = {
+        additionalContextRoots: [additionalRoot]
+      };
+
+      await runScriptInNodeVm({ script, context, collectionPath, scriptingConfig });
+
+      expect(context.bru.setVar).toHaveBeenCalledWith('fromShared', true);
+      expect(context.bru.setVar).toHaveBeenCalledWith('version', '1.0.0');
+    });
+
+    it('should resolve npm module required by a shared script in additionalContextRoots', async () => {
+      const additionalRoot = path.join(testDir, 'shared');
+      fs.mkdirSync(additionalRoot);
+
+      // Create an npm dependency inside shared/node_modules
+      const sharedNodeModulesDir = path.join(additionalRoot, 'node_modules', 'shared-util');
+      fs.mkdirSync(sharedNodeModulesDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(sharedNodeModulesDir, 'index.js'),
+        'module.exports = { parse: function(s) { return JSON.parse(s); } };'
+      );
+
+      // Create a shared script that requires the npm module
+      fs.writeFileSync(
+        path.join(additionalRoot, 'parser.js'),
+        'const sharedUtil = require("shared-util"); module.exports = { parse: sharedUtil.parse };'
+      );
+
+      // Collection script requires the shared local script, which internally
+      // requires an npm package from the shared root's node_modules
+      const script = `
+        const parser = require('../shared/parser');
+        const result = parser.parse('{"ok":true}');
+        bru.setVar('result', result.ok);
+      `;
+
+      const context = {
+        bru: { setVar: jest.fn() },
+        console: console
+      };
+
+      const scriptingConfig = {
+        additionalContextRoots: [additionalRoot]
+      };
+
+      await runScriptInNodeVm({ script, context, collectionPath, scriptingConfig });
+
+      expect(context.bru.setVar).toHaveBeenCalledWith('result', true);
+    });
+
+    it('should not leak npm resolution to ancestor node_modules outside allowed roots', async () => {
+      // testDir is the parent of collectionPath. Simulate an npm package installed
+      // in that parent's node_modules — an ancestor of the collection that is NOT
+      // configured as an additionalContextRoot. Node's walk-up would find it, but
+      // the security gate must reject it.
+      const ancestorNodeModules = path.join(testDir, 'node_modules', 'ancestor-only-pkg');
+      fs.mkdirSync(ancestorNodeModules, { recursive: true });
+      fs.writeFileSync(
+        path.join(ancestorNodeModules, 'index.js'),
+        'module.exports = { leaked: true };'
+      );
+
+      const script = `
+        try {
+          require('ancestor-only-pkg');
+          bru.setVar('leaked', true);
+        } catch (e) {
+          bru.setVar('leaked', false);
+        }
+      `;
+
+      const context = {
+        bru: { setVar: jest.fn() },
+        console: console
+      };
+
+      // No additionalContextRoots configured — the ancestor node_modules must remain out of reach
+      await runScriptInNodeVm({ script, context, collectionPath, scriptingConfig: {} });
+
+      expect(context.bru.setVar).toHaveBeenCalledWith('leaked', false);
+    });
+
+    it('should walk up from a nested shared script to find its npm dependency', async () => {
+      // Structure:
+      //   shared/
+      //     node_modules/deep-dep/index.js   ← package hoisted at shared root
+      //     deep/nested/parser.js            ← requires 'deep-dep'
+      const additionalRoot = path.join(testDir, 'shared');
+      const nestedDir = path.join(additionalRoot, 'deep', 'nested');
+      fs.mkdirSync(nestedDir, { recursive: true });
+
+      const depDir = path.join(additionalRoot, 'node_modules', 'deep-dep');
+      fs.mkdirSync(depDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(depDir, 'index.js'),
+        'module.exports = { walkedUp: true };'
+      );
+
+      fs.writeFileSync(
+        path.join(nestedDir, 'parser.js'),
+        'const dep = require("deep-dep"); module.exports = { ok: dep.walkedUp };'
+      );
+
+      const script = `
+        const parser = require('../shared/deep/nested/parser');
+        bru.setVar('result', parser.ok);
+      `;
+
+      const context = {
+        bru: { setVar: jest.fn() },
+        console: console
+      };
+
+      const scriptingConfig = {
+        additionalContextRoots: [additionalRoot]
+      };
+
+      await runScriptInNodeVm({ script, context, collectionPath, scriptingConfig });
+
+      expect(context.bru.setVar).toHaveBeenCalledWith('result', true);
+    });
+
+    it('should resolve npm modules when additionalContextRoots points at a symlink', async () => {
+      // Physical location of the shared root
+      const realShared = path.join(testDir, 'real-shared');
+      const realNodeModules = path.join(realShared, 'node_modules', 'symlinked-lib');
+      fs.mkdirSync(realNodeModules, { recursive: true });
+      fs.writeFileSync(
+        path.join(realNodeModules, 'index.js'),
+        'module.exports = { via: "symlink" };'
+      );
+
+      // Shared script inside the real location that requires the npm package.
+      // Loaded through the symlink below.
+      fs.writeFileSync(
+        path.join(realShared, 'helper.js'),
+        'const pkg = require("symlinked-lib"); module.exports = { via: pkg.via };'
+      );
+
+      // User-facing symlink that Bruno is told to treat as the shared root.
+      // Windows requires developer mode / admin to create symlinks — skip gracefully.
+      const linkedShared = path.join(testDir, 'linked-shared');
+      try {
+        fs.symlinkSync(realShared, linkedShared, 'dir');
+      } catch (e) {
+        if (e.code === 'EPERM' || e.code === 'ENOTSUP') return;
+        throw e;
+      }
+
+      const script = `
+        const helper = require('../linked-shared/helper');
+        bru.setVar('via', helper.via);
+      `;
+
+      const context = {
+        bru: { setVar: jest.fn() },
+        console: console
+      };
+
+      const scriptingConfig = {
+        additionalContextRoots: [linkedShared]
+      };
+
+      await runScriptInNodeVm({ script, context, collectionPath, scriptingConfig });
+
+      // If isResolvedNpmPathAllowed didn't canonicalize both sides via realpathSync,
+      // the resolved path (under real-shared/) would be rejected as escaping the
+      // configured root (linked-shared/) and this assertion would fail.
+      expect(context.bru.setVar).toHaveBeenCalledWith('via', 'symlink');
+    });
+
+    it('should allow internal relative requires inside an npm-linked package', async () => {
+      // Physical location of a multi-file package outside every declared root.
+      const externalPkg = path.join(testDir, 'external-pkg');
+      fs.mkdirSync(externalPkg, { recursive: true });
+      fs.writeFileSync(
+        path.join(externalPkg, 'package.json'),
+        JSON.stringify({ name: 'linked-pkg', main: 'index.js' })
+      );
+      fs.writeFileSync(
+        path.join(externalPkg, 'index.js'),
+        'const util = require("./util"); module.exports = { greet: util.greet };'
+      );
+      fs.writeFileSync(
+        path.join(externalPkg, 'util.js'),
+        'module.exports = { greet: () => "hello" };'
+      );
+
+      // npm-link style: collection has node_modules/<pkg> as a symlink to the
+      // physical location that lives outside the collection.
+      const nmDir = path.join(collectionPath, 'node_modules');
+      fs.mkdirSync(nmDir, { recursive: true });
+      try {
+        fs.symlinkSync(externalPkg, path.join(nmDir, 'linked-pkg'), 'dir');
+      } catch (e) {
+        if (e.code === 'EPERM' || e.code === 'ENOTSUP') return;
+        throw e;
+      }
+
+      const script = `
+        const pkg = require('linked-pkg');
+        bru.setVar('result', pkg.greet());
+      `;
+
+      const context = {
+        bru: { setVar: jest.fn() },
+        console: console
+      };
+
+      await runScriptInNodeVm({ script, context, collectionPath, scriptingConfig: {} });
+
+      // Without the ownPackageRoot fallback in createNpmModuleRequire, index.js's
+      // require('./util') would be rejected as escaping allowed roots.
+      expect(context.bru.setVar).toHaveBeenCalledWith('result', 'hello');
+    });
   });
 
   describe('createCustomRequire - npm modules', () => {
