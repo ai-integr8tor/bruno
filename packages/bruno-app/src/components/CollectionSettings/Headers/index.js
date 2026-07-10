@@ -140,6 +140,7 @@ const Headers = ({ collection }) => {
       </div>
       <EditableTable
         tableId="collection-headers"
+        focusUid={collection.uid}
         testId="collection-headers"
         columns={columns}
         rows={headers}

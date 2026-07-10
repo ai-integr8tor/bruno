@@ -1,5 +1,5 @@
-import styled from 'styled-components';
 import { rgba } from 'polished';
+import styled from 'styled-components';
 
 const StyledWrapper = styled.div`
   .tl-row-wrap {
@@ -248,6 +248,48 @@ const StyledWrapper = styled.div`
     letter-spacing: 0;
   }
 
+  .tl-block-sections {
+    padding-left: 18px;
+    padding-right: 4px;
+  }
+
+  .tl-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border: 1px solid transparent;
+  }
+  .tl-pill--default {
+    color: ${(props) => props.theme.status.info.text};
+    background: ${(props) => props.theme.status.info.background};
+    border-color: ${(props) => rgba(props.theme.status.info.border, 0.4)};
+  }
+  .tl-pill--collection {
+    color: ${(props) => props.theme.status.warning.text};
+    background: ${(props) => props.theme.status.warning.background};
+    border-color: ${(props) => rgba(props.theme.status.warning.border, 0.4)};
+  }
+  .tl-pill--folder {
+    color: ${(props) => props.theme.colors.text.purple};
+    background: ${(props) => rgba(props.theme.colors.text.purple, 0.15)};
+    border-color: ${(props) => rgba(props.theme.colors.text.purple, 0.4)};
+  }
+  .tl-pill--request {
+    color: ${(props) => props.theme.status.success.text};
+    background: ${(props) => props.theme.status.success.background};
+    border-color: ${(props) => rgba(props.theme.status.success.border, 0.4)};
+  }
+  .tl-pill--script {
+    color: ${(props) => props.theme.status.danger.text};
+    background: ${(props) => props.theme.status.danger.background};
+    border-color: ${(props) => rgba(props.theme.status.danger.border, 0.4)};
+  }
+
   .tl-headers-table {
     width: 100%;
     border-collapse: collapse;
@@ -272,12 +314,49 @@ const StyledWrapper = styled.div`
   }
   .tl-headers-table td.tl-headers-key {
     color: ${(props) => props.theme.colors.text.muted};
-    width: 220px;
-    min-width: 120px;
-    max-width: 280px;
+    width: 160px;
+    min-width: 100px;
+    max-width: 200px;
+    padding-right: 6px;
   }
   .tl-headers-table td.tl-headers-val {
     color: ${(props) => props.theme.text};
+  }
+  .tl-headers-table td.tl-headers-act {
+    width: 24px;
+    text-align: right;
+    padding-right: 0;
+  }
+  .tl-headers-goto {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border: none;
+    background: none;
+    border-radius: 4px;
+    color: ${(props) => props.theme.colors.text.muted};
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.1s ease, color 0.1s ease;
+  }
+  .tl-headers-table tr:hover .tl-headers-goto {
+    opacity: 1;
+  }
+  .tl-headers-goto:hover {
+    color: ${(props) => props.theme.text};
+  }
+  .tl-headers-goto:focus-visible {
+    opacity: 1;
+    outline: 1px solid ${(props) => props.theme.status.info.border};
+  }
+  /* Align section tables under the pill (past the chevron), and leave room on the right. */
+  .tl-block-sections .tl-headers-table {
+    margin-left: 20px;
+    width: calc(100% - 20px);
+  }
+  .tl-block-sections .tl-empty {
+    margin-left: 20px;
   }
 
   .tl-empty {
