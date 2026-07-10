@@ -15,6 +15,7 @@ import Tests from 'components/RequestPane/Tests';
 import Settings from 'components/RequestPane/Settings';
 import AppCodeEditor from 'components/RequestPane/AppCodeEditor';
 import Documentation from 'components/Documentation/index';
+import DocsAction from 'components/Documentation/DocsAction';
 import StatusDot from 'components/StatusDot';
 import ResponsiveTabs from 'ui/ResponsiveTabs';
 import HeightBoundContainer from 'ui/HeightBoundContainer';
@@ -141,6 +142,10 @@ const HttpRequestPane = ({ item, collection }) => {
   ) : requestPaneTab === 'auth' ? (
     <div ref={rightContentRef} className="flex flex-grow justify-start items-center">
       <AuthMode item={item} collection={collection} />
+    </div>
+  ) : requestPaneTab === 'docs' ? (
+    <div ref={rightContentRef}>
+      <DocsAction item={item} />
     </div>
   ) : null;
 
