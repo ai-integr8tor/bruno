@@ -27,7 +27,7 @@
     "xml2js": "^0.6.2"
   },
   "devDependencies": {
-    "@babel/core": "^7.25.2",
+    "@babel/core": "^7.29.6",
     "@babel/preset-env": "^7.25.4",
     "@rollup/plugin-alias": "^5.1.0",
     "@rollup/plugin-commonjs": "^23.0.2",
