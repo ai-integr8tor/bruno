@@ -23,7 +23,7 @@
     "@faker-js/faker": "^9.7.0",
     "@grpc/grpc-js": "^1.13.3",
     "@grpc/proto-loader": "^0.7.15",
-    "@types/qs": "^6.9.18",
+    "@types/qs": "^6.15.1",
     "axios": "^1.9.0",
     "debug": "^4.4.3",
     "google-protobuf": "^4.0.0",
